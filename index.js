@@ -24,7 +24,7 @@ let uptimeInterval = null;
 let reconnectAttempts = 0;
 let playerCount = 0;
 let serverStatus = 'Offline';
-const maxReconnectAttempts = 5;
+const maxReconnectAttempts = 5; // Maximum reconnect attempts before reset
 const baseReconnectDelay = 10000;
 
 // Messages to send every 2 minutes
@@ -56,7 +56,8 @@ function formatUptime(ms) {
 // Function to reconnect with exponential backoff
 function reconnect() {
   if (reconnectAttempts >= maxReconnectAttempts) {
-    logMessage('Max reconnect attempts reached. Stopping bot.', 'error');
+    logMessage("Bot can't join after multiple attempts. Resetting project to prevent offline status.", 'error');
+    process.exit(1); // Exit process to trigger restart
     return;
   }
   const delay = baseReconnectDelay * Math.pow(2, reconnectAttempts);
