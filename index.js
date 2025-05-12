@@ -68,6 +68,50 @@ function reconnect() {
   }, delay);
 }
 
+// Function to perform scheduled reconnect every 5 minutes
+function scheduledReconnect() {
+  logMessage('Scheduled reconnect: Disconnecting bot...', 'info');
+  bot.end();
+  setTimeout(() => {
+    logMessage('Scheduled reconnect: Reconnecting bot...', 'info');
+    bot = mineflayer.createBot(botConfig);
+  }, 5000); // 5-second delay between disconnect and reconnect
+}
+
+// Enhanced movement function
+function performAntiAFKMovement() {
+  if (!bot.player) return; // Ensure bot is spawned
+
+  // Randomly look around
+  bot.look(Math.random() * Math.PI * 2, Math.random() * (Math.PI / 4) - Math.PI / 8); // Random yaw and pitch
+
+  // Randomly walk (1-3 blocks in a random direction)
+  const distance = Math.floor(Math.random() * 3) + 1;
+  const angle = Math.random() * 2 * Math.PI;
+  const x = distance * Math.cos(angle);
+  const z = distance * Math.sin(angle);
+  bot.setControlState('forward', true);
+  setTimeout(() => {
+    bot.setControlState('forward', false);
+    bot.entity.position.x += x;
+    bot.entity.position.z += z;
+  }, 1000); // Walk for 1 second
+
+  // Random actions
+  if (Math.random() > 0.5) {
+    bot.setControlState('sneak', true); // Crouch
+    setTimeout(() => bot.setControlState('sneak', false), 2000); // Crouch for 2 seconds
+  }
+  if (Math.random() > 0.7) {
+    bot.swingArm(); // Swing arm (mimics attacking or interacting)
+    logMessage('Performed arm swing to simulate activity', 'info');
+  }
+  if (Math.random() > 0.6) {
+    bot.setControlState('jump', true);
+    setTimeout(() => bot.setControlState('jump', false), 300); // Jump
+  }
+}
+
 // Create the bot
 let bot = mineflayer.createBot(botConfig);
 
@@ -100,14 +144,10 @@ bot.on('spawn', () => {
     }
   }, 10000);
 
-  // Periodically move to avoid AFK detection
+  // Enhanced anti-AFK movement every 3-7 seconds (randomized)
   setInterval(() => {
-    bot.look(Math.random() * Math.PI * 2, 0);
-    if (Math.random() > 0.7) {
-      bot.setControlState('jump', true);
-      setTimeout(() => bot.setControlState('jump', false), 300);
-    }
-  }, 5000);
+    performAntiAFKMovement();
+  }, Math.random() * 4000 + 3000); // Random interval between 3-7 seconds
 
   // Send chat message every 2 minutes
   setInterval(() => {
@@ -115,6 +155,11 @@ bot.on('spawn', () => {
     bot.chat(message);
     logMessage(`Sent chat message: ${message}`, 'info');
   }, 2 * 60 * 1000); // 2 minutes
+
+  // Scheduled reconnect every 5 minutes
+  setInterval(() => {
+    scheduledReconnect();
+  }, 5 * 60 * 1000); // 5 minutes
 
   // Update player count
   bot.on('playerJoined', () => (playerCount = bot.players.length));
@@ -125,7 +170,9 @@ bot.on('spawn', () => {
 // Event: Handle errors
 bot.on('error', (err) => {
   logMessage(`Bot error: ${err.message}`, 'error');
-  if (err.code === 'ECONNRESET') {
+  // Check for connection-related errors
+  if (err.code === 'ECONNRESET' || err.code === 'EHOSTUNREACH' || err.code === 'ENOTFOUND' || !bot.player) {
+    logMessage("Bot can't join. This could be due to the server being offline, incorrect server IP/port, version mismatch, or anti-bot protection.", 'error');
     if (startTime) {
       logMessage(`Uptime counter stopped. Total uptime: ${formatUptime(Date.now() - startTime)}`, 'info');
       startTime = null;
