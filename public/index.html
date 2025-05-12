@@ -622,8 +622,12 @@
           <input type="number" id="server-port" placeholder="Enter server port">
         </div>
         <div class="form-group">
-          <label for="bot-username">Bot Username</label>
-          <input type="text" id="bot-username" placeholder="Enter bot username">
+          <label for="bot-username1">Bot Username 1</label>
+          <input type="text" id="bot-username1" placeholder="Enter first bot username">
+        </div>
+        <div class="form-group">
+          <label for="bot-username2">Bot Username 2</label>
+          <input type="text" id="bot-username2" placeholder="Enter second bot username">
         </div>
       </div>
       <button onclick="updateConfig()"><i class="fas fa-save"></i> Update Configuration</button>
@@ -683,7 +687,8 @@
     const statusEl = document.getElementById('status');
     const serverIpInput = document.getElementById('server-ip');
     const serverPortInput = document.getElementById('server-port');
-    const botUsernameInput = document.getElementById('bot-username');
+    const botUsername1Input = document.getElementById('bot-username1');
+    const botUsername2Input = document.getElementById('bot-username2');
     const introOverlay = document.getElementById('intro-overlay');
     const particlesContainer = document.getElementById('particles-container');
 
@@ -746,7 +751,8 @@
         const config = await response.json();
         serverIpInput.value = config.host;
         serverPortInput.value = config.port;
-        botUsernameInput.value = config.username;
+        botUsername1Input.value = config.username1;
+        botUsername2Input.value = config.username2;
       } catch (err) {
         console.error('Error fetching config:', err);
         addConsoleMessage(`Error fetching config: ${err.message}`, 'error');
@@ -863,7 +869,8 @@
       const config = {
         host: serverIpInput.value,
         port: serverPortInput.value,
-        username: botUsernameInput.value
+        username1: botUsername1Input.value,
+        username2: botUsername2Input.value
       };
 
       try {
