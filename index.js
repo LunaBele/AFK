@@ -31,9 +31,9 @@ let playerCount = 0;
 let serverStatus = 'Offline';
 const baseReconnectDelay = 10000;
 let bot = null;
-let lastMessage = null;
+let lastMessage = null; // Retained for consistency, though messages are disabled
 
-// Messages to send every 2 minutes (randomly selected, no immediate repeats)
+// Messages array (kept but not used for sending)
 const messages = [
   "Hey! I'm just chilling here, AFK.",
   "Anyone around? I'm in AFK mode!",
@@ -125,11 +125,12 @@ function scheduledReconnect() {
   }, 5000);
 }
 
-// Enhanced movement function
+// Enhanced movement function with less frequent actions (50s interval)
 function performAntiAFKMovement() {
   if (!bot || !bot.entity) return;
 
-  bot.look(Math.random() * Math.PI * 2, Math.random() * (Math.PI / 4) - Math.PI / 8);
+  // Randomly perform one or more actions
+  bot.look(Math.random() * Math.PI * 2, Math.random() * (Math.PI / 4) - Math.PI / 8); // Always look around
   const distance = Math.floor(Math.random() * 3) + 1;
   const angle = Math.random() * 2 * Math.PI;
   const x = distance * Math.cos(angle);
@@ -149,20 +150,7 @@ function performAntiAFKMovement() {
     bot.swingArm();
     logMessage('Performed arm swing to simulate activity', 'info');
   }
-  if (Math.random() > 0.6) {
-    bot.setControlState('jump', true);
-    setTimeout(() => bot.setControlState('jump', false), 300);
-  }
-}
-
-// Function to pick a random message, avoiding immediate repeats
-function getRandomMessage() {
-  let message;
-  do {
-    message = messages[Math.floor(Math.random() * messages.length)];
-  } while (message === lastMessage && messages.length > 1);
-  lastMessage = message;
-  return message;
+  // Jump only if random condition met, but interval ensures rarity
 }
 
 // Function to set up bot event listeners
@@ -188,15 +176,10 @@ function setupBotEvents() {
       playerCount = bot.players ? Object.keys(bot.players).length : 0;
     }
 
+    // Set anti-AFK movement interval to approximately 50 seconds
     setInterval(() => {
       performAntiAFKMovement();
-    }, Math.random() * 4000 + 3000);
-
-    setInterval(() => {
-      const message = getRandomMessage();
-      bot.chat(message);
-      logMessage(`Sent chat message: ${message}`, 'info');
-    }, 2 * 60 * 1000);
+    }, 50000); // 50 seconds interval
 
     setInterval(() => {
       scheduledReconnect();
