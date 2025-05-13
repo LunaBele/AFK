@@ -31,9 +31,10 @@ let playerCount = 0;
 let serverStatus = 'Offline';
 const baseReconnectDelay = 10000;
 let bot = null;
-let lastMessage = null; // Retained for consistency, though messages are disabled
+let lastMessage = null;
+let leaveTimer = null; // Track the leave timer to clear if needed
 
-// Messages array (kept but not used for sending)
+// Messages to send every 1 minute 50 seconds (randomly selected, no immediate repeats)
 const messages = [
   "Hey! I'm just chilling here, AFK.",
   "Anyone around? I'm in AFK mode!",
@@ -44,7 +45,13 @@ const messages = [
   "Just keeping the server alive for you guys!",
   "AFKBot here, doing my thing.",
   "Feel free to ignore me, I'm just AFK!",
-  "Hmm, I wonder what's happening in the server..."
+  "Hmm, I wonder what's happening in the server...",
+  "Big thanks to Mart John Labaco for creating me!",
+  "Just hanging out, keeping things running smoothly.",
+  "Credit to Mart John Labaco for this awesome bot!",
+  "If you see me moving, I'm just avoiding AFK kicks!",
+  "Hey, let's all thank Mart John Labaco for this bot!",
+  "I'm here to help—built by Mart John Labaco."
 ];
 
 // Function to log messages
@@ -73,18 +80,33 @@ function switchUsername() {
 // Function to clean up bot instance
 function cleanupBot() {
   if (bot) {
-    bot.removeAllListeners();
-    clearInterval(uptimeInterval);
-    bot.end();
+    bot.removeAllListeners(); // Remove all event listeners
+    if (uptimeInterval) {
+      clearInterval(uptimeInterval);
+      uptimeInterval = null;
+    }
+    if (leaveTimer) {
+      clearTimeout(leaveTimer);
+      leaveTimer = null;
+    }
+    try {
+      bot.end(); // Attempt to end the connection
+    } catch (err) {
+      logMessage(`Error ending bot connection: ${err.message}`, 'error');
+    }
     bot = null;
   }
 }
 
-// Function to restart the project (exit to trigger Render's auto-restart)
-function restartProject() {
-  logMessage('Initiating project restart due to join failure...', 'warning');
+// Function to restart the bot logic (without exiting the process)
+function restartBotLogic() {
+  logMessage('Restarting bot logic due to join failure...', 'warning');
   cleanupBot();
-  process.exit(1); // Exit with code 1 to trigger Render restart
+  reconnectAttempts = 0;
+  serverStatus = 'Offline';
+  startTime = null;
+  playerCount = 0;
+  createBotInstance(); // Attempt to create new instance
 }
 
 // Function to reconnect with exponential backoff (force login)
@@ -100,22 +122,31 @@ function reconnect() {
   }, delay);
 }
 
-// Function to create a new bot instance
+// Function to create a new bot instance with retry logic
 function createBotInstance() {
   cleanupBot();
-  bot = mineflayer.createBot({
-    host: botConfig.host,
-    port: botConfig.port,
-    username: botConfig.currentUsername,
-    version: botConfig.version
-  });
-  setupBotEvents();
+  try {
+    bot = mineflayer.createBot({
+      host: botConfig.host,
+      port: botConfig.port,
+      username: botConfig.currentUsername,
+      version: botConfig.version
+    });
+    setupBotEvents();
+  } catch (err) {
+    logMessage(`Failed to create bot instance: ${err.message}`, 'error');
+    setTimeout(() => {
+      switchUsername();
+      createBotInstance(); // Retry with new username
+    }, 5000); // Retry after 5 seconds
+  }
 }
 
 // Function to perform scheduled reconnect every 5 minutes
 function scheduledReconnect() {
+  if (!bot) return; // Exit if no bot instance
   logMessage('Scheduled reconnect: Disconnecting bot...', 'info');
-  if (bot) bot.chat('Reconnecting Guys! 10s');
+  bot.chat('Reconnecting Guys! 10s');
   setTimeout(() => {
     cleanupBot();
     setTimeout(() => {
@@ -125,12 +156,27 @@ function scheduledReconnect() {
   }, 5000);
 }
 
-// Enhanced movement function with less frequent actions (50s interval)
+// Function to schedule bot leave after 1 hour with 10s rejoin delay
+function scheduleBotLeave() {
+  if (!bot || leaveTimer) return; // Exit if no bot or timer already set
+  leaveTimer = setTimeout(() => {
+    logMessage('Bot has been active for 1 hour, leaving now...', 'info');
+    if (bot) bot.chat('Reconnecting Guys! 10s'); // Announce departure
+    setTimeout(() => {
+      cleanupBot();
+      logMessage('Rejoining after 10 seconds...', 'info');
+      setTimeout(() => {
+        createBotInstance();
+      }, 10000); // Rejoin after 10 seconds
+    }, 5000); // Allow 5 seconds for the message to be sent
+  }, 3600000); // 1 hour (3600000 milliseconds)
+}
+
+// Enhanced movement function with 50s interval
 function performAntiAFKMovement() {
   if (!bot || !bot.entity) return;
 
-  // Randomly perform one or more actions
-  bot.look(Math.random() * Math.PI * 2, Math.random() * (Math.PI / 4) - Math.PI / 8); // Always look around
+  bot.look(Math.random() * Math.PI * 2, Math.random() * (Math.PI / 4) - Math.PI / 8);
   const distance = Math.floor(Math.random() * 3) + 1;
   const angle = Math.random() * 2 * Math.PI;
   const x = distance * Math.cos(angle);
@@ -138,8 +184,10 @@ function performAntiAFKMovement() {
   bot.setControlState('forward', true);
   setTimeout(() => {
     bot.setControlState('forward', false);
-    bot.entity.position.x += x;
-    bot.entity.position.z += z;
+    if (bot.entity) {
+      bot.entity.position.x += x;
+      bot.entity.position.z += z;
+    }
   }, 1000);
 
   if (Math.random() > 0.5) {
@@ -150,14 +198,26 @@ function performAntiAFKMovement() {
     bot.swingArm();
     logMessage('Performed arm swing to simulate activity', 'info');
   }
-  // Jump only if random condition met, but interval ensures rarity
+}
+
+// Function to pick a random message, avoiding immediate repeats
+function getRandomMessage() {
+  if (messages.length === 0) return "No messages available.";
+  let message;
+  do {
+    message = messages[Math.floor(Math.random() * messages.length)];
+  } while (message === lastMessage && messages.length > 1);
+  lastMessage = message;
+  return message;
 }
 
 // Function to set up bot event listeners
 function setupBotEvents() {
+  if (!bot) return;
+
   bot.on('spawn', () => {
     logMessage(`Bot joined the server as ${botConfig.currentUsername}`, 'success');
-    bot.chat('Ahh! Good to be back!');
+    if (bot) bot.chat('Ahh! Good to be back!');
     reconnectAttempts = 0;
     serverStatus = 'Online';
     startTime = Date.now();
@@ -165,25 +225,42 @@ function setupBotEvents() {
 
     if (uptimeInterval) clearInterval(uptimeInterval);
     uptimeInterval = setInterval(() => {
-      if (startTime) {
+      if (startTime && bot) {
         logMessage(`Uptime: ${formatUptime(Date.now() - startTime)}`, 'info');
       }
     }, 10000);
 
     if (!bot.listeners('playerJoined').length) {
-      bot.on('playerJoined', () => (playerCount = bot.players ? Object.keys(bot.players).length : 0));
-      bot.on('playerLeft', () => (playerCount = bot.players ? Object.keys(bot.players).length : 0));
+      bot.on('playerJoined', () => {
+        if (bot.players) playerCount = Object.keys(bot.players).length;
+      });
+      bot.on('playerLeft', () => {
+        if (bot.players) playerCount = Object.keys(bot.players).length;
+      });
       playerCount = bot.players ? Object.keys(bot.players).length : 0;
     }
 
-    // Set anti-AFK movement interval to approximately 50 seconds
+    // Anti-AFK movements every ~50 seconds
     setInterval(() => {
-      performAntiAFKMovement();
-    }, 50000); // 50 seconds interval
+      if (bot) performAntiAFKMovement();
+    }, 50000);
+
+    // Send random messages every 1 minute 50 seconds
+    setInterval(() => {
+      if (bot) {
+        const message = getRandomMessage();
+        bot.chat(message);
+        logMessage(`Sent chat message: ${message}`, 'info');
+      }
+    }, 110000);
 
     setInterval(() => {
-      scheduledReconnect();
+      if (bot) scheduledReconnect();
     }, 5 * 60 * 1000);
+
+    // Schedule bot to leave after 1 hour
+    if (leaveTimer) clearTimeout(leaveTimer);
+    scheduleBotLeave();
   });
 
   bot.on('error', (err) => {
@@ -197,7 +274,7 @@ function setupBotEvents() {
       }
       serverStatus = 'Offline';
       switchUsername();
-      restartProject(); // Restart project on join failure
+      restartBotLogic();
     } else if (err.code) {
       if (startTime) {
         logMessage(`Uptime counter stopped. Total uptime: ${formatUptime(Date.now() - startTime)}`, 'info');
